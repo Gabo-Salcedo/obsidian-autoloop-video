@@ -1,0 +1,10 @@
+{
+  "id": "autoloop-video",
+  "name": "AutoLoop Video",
+  "version": "1.0.0",
+  "minAppVersion": "0.12.0",
+  "description": "Reproduce automáticamente los videos embebidos en loop.",
+  "author": "Papu",
+  "authorUrl": "https://tucorazon.com",
+  "main": "main.js"
+}
