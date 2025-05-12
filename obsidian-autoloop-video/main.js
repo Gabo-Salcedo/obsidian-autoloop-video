@@ -1,9 +1,17 @@
 const { Plugin } = require('obsidian');
 
 module.exports = class AutoLoopVideoPlugin extends Plugin {
-  onload() {
+  async onload() {
     console.log("AutoLoop Video mejorado cargado");
+    
+    // Cargar datos guardados
+    this.settings = await this.loadData() || { loopingVideos: {} };
+    
     this.observeVideos();
+  }
+
+  async saveSettings() {
+    await this.saveData(this.settings);
   }
 
   observeVideos() {
@@ -12,6 +20,14 @@ module.exports = class AutoLoopVideoPlugin extends Plugin {
 
       videos.forEach((video) => {
         if (video.parentElement.querySelector('.loop-button')) return;
+
+        // Crear identificador único para el video
+        const videoSrc = video.getAttribute('src') || '';
+        const videoParentPath = this.getAncestorPath(video, 5); // Usamos la ruta del DOM para ayudar a identificar el video
+        const videoId = `${videoSrc}-${videoParentPath}`;
+        
+        // Marcar el video con un atributo data-video-id para identificarlo después
+        video.setAttribute('data-video-id', videoId);
 
         // Crear botón con ícono de loop
         const btn = document.createElement('button');
@@ -40,43 +56,77 @@ module.exports = class AutoLoopVideoPlugin extends Plugin {
         video.parentElement.style.position = 'relative';
         video.parentElement.appendChild(btn);
 
-        let isLooping = false;
+        // Comprobar si este video estaba en bucle previamente
+        let isLooping = !!this.settings.loopingVideos[videoId];
 
-        const activateLoop = () => {
-          video.setAttribute('autoplay', 'true');
-          video.setAttribute('loop', 'true');
-          video.setAttribute('muted', 'true');
-          video.play().catch((e) => {
-            console.warn('No se pudo reproducir el video:', e);
-          });
-          btn.style.background = '#4CAF50'; // Color verde para indicar "activo"
-        };
-
-        const deactivateLoop = () => {
-          video.removeAttribute('loop');
-          btn.style.background = 'rgba(0, 0, 0, 0.5)';
-        };
+        // Si el video debería estar en bucle, aplicar esa configuración inmediatamente
+        if (isLooping) {
+          this.activateLoop(video, btn);
+        }
 
         btn.addEventListener('click', () => {
           isLooping = !isLooping;
+          
           if (isLooping) {
-            activateLoop();
+            this.activateLoop(video, btn);
+            // Guardar estado
+            this.settings.loopingVideos[videoId] = true;
           } else {
-            deactivateLoop();
+            this.deactivateLoop(video, btn);
+            // Eliminar del estado guardado
+            delete this.settings.loopingVideos[videoId];
           }
+          
+          this.saveSettings();
         });
 
         // Reanudar si vuelve a la vista
         const intersectionObserver = new IntersectionObserver((entries) => {
           entries.forEach((entry) => {
-            if (entry.isIntersecting && isLooping) {
-              activateLoop();
+            if (entry.isIntersecting && this.settings.loopingVideos[videoId]) {
+              this.activateLoop(video, btn);
             }
           });
         });
 
         intersectionObserver.observe(video);
       });
+    };
+
+    // Función para activar el loop
+    this.activateLoop = (video, btn) => {
+      video.setAttribute('autoplay', 'true');
+      video.setAttribute('loop', 'true');
+      video.setAttribute('muted', 'true');
+      video.play().catch((e) => {
+        console.warn('No se pudo reproducir el video:', e);
+      });
+      btn.style.background = '#4CAF50'; // Color verde para indicar "activo"
+    };
+
+    // Función para desactivar el loop
+    this.deactivateLoop = (video, btn) => {
+      video.removeAttribute('loop');
+      btn.style.background = 'rgba(0, 0, 0, 0.5)';
+    };
+
+    // Función para obtener una ruta del DOM única
+    this.getAncestorPath = (element, depth) => {
+      let path = '';
+      let current = element;
+      let count = 0;
+      
+      while (current && count < depth) {
+        const tagName = current.tagName || '';
+        const id = current.id ? `#${current.id}` : '';
+        const classList = Array.from(current.classList || []).map(c => `.${c}`).join('');
+        
+        path = `${tagName}${id}${classList}` + (path ? '>' + path : '');
+        current = current.parentElement;
+        count++;
+      }
+      
+      return path;
     };
 
     applySettings();
@@ -90,4 +140,10 @@ module.exports = class AutoLoopVideoPlugin extends Plugin {
       subtree: true,
     });
   }
-};
+
+  onunload() {
+    console.log("AutoLoop Video plugin desactivado");
+    // Guardar configuración al descargar
+    this.saveSettings();
+  }
+}
